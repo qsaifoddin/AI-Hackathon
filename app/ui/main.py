@@ -22,6 +22,10 @@ from app.services.followup import FollowupService
 from app.services.ivr import IVRCaseService
 from app.services.callback import CallbackService
 from app.services.automation import AutomationEngine
+from app.services.ai_copilot import AICopilotService
+from app.services.sla_predictor import SLAPredictorService
+from app.services.escalation import EscalationService
+from app.services.parts import PartsService
 
 # Page settings
 st.set_page_config(
@@ -172,10 +176,12 @@ nav_selection = st.sidebar.radio(
         "Case Details & Actions",
         "Case Automation Center",
         "Warranty Request Hub",
+        "Power Apps Parts Hub",
         "CBC Callback Center",
         "Follow-up Center",
         "CTI Customer Search (D365 CC)",
         "Administration Panel",
+        "FastAPI REST Portal",
         "Integration Readiness",
         "Power BI Data Model"
     ]
@@ -453,8 +459,8 @@ elif nav_selection == "Case Details & Actions":
             """, unsafe_allow_html=True)
 
         # Main D365 UCI Tab Structure
-        tab_summary, tab_dynamic_notes, tab_case_info, tab_timeline = st.tabs([
-            "Customer Summary", "Dynamic Notes", "Case Information", "Timeline & History Logs"
+        tab_summary, tab_ai_copilot, tab_dynamic_notes, tab_case_info, tab_timeline = st.tabs([
+            "Customer Summary", "🤖 AI Copilot & SLA Risk", "Dynamic Notes", "Case Information", "Timeline & History Logs"
         ])
 
         with tab_summary:
@@ -710,9 +716,58 @@ elif nav_selection == "Case Details & Actions":
                             new_value=str(new_l2),
                             changed_by=selected_user_name
                         )
-                        st.success("L2 status updated.")
-                        time.sleep(1)
-                        st.rerun()
+        with tab_ai_copilot:
+            st.subheader("⚡ HP AI Copilot & SLA Risk Intelligence Engine")
+            
+            c_sla, c_esc = st.columns([1.2, 1])
+
+            with c_sla:
+                st.markdown("#### 🎯 Real-time SLA Breach Risk Predictor")
+                sla_info = SLAPredictorService.predict_risk(c_details['case_id'])
+                if sla_info.get('success'):
+                    r_pct = sla_info['risk_percentage']
+                    r_lvl = sla_info['risk_level']
+                    st.metric("SLA Breach Risk Score", f"{r_pct}%", f"Level: {r_lvl}")
+                    st.progress(min(1.0, r_pct / 100.0))
+                    st.markdown(f"**SLA Limit:** `{sla_info['sla_limit_hrs']} hrs` | **Time Elapsed:** `{sla_info['elapsed_hrs']} hrs` | **Remaining:** `{sla_info['remaining_hrs']} hrs`")
+                    st.markdown("**Contributing Risk Factors:**")
+                    for factor in sla_info['risk_factors']:
+                        st.markdown(f"- ⚠️ {factor}")
+
+            with c_esc:
+                st.markdown("#### 🚀 Tier L2 / L3 Escalation Engine")
+                with st.form("escalate_form"):
+                    esc_tier = st.selectbox("Target Escalation Tier", ["Tier 2", "Tier 3"])
+                    esc_reason = st.text_area("Escalation Reason", value="Complex hardware failure requiring L2/L3 diagnostic intervention.")
+                    sub_esc = st.form_submit_button("Trigger Tier Escalation", use_container_width=True)
+                    if sub_esc:
+                        esc_res = EscalationService.escalate_case(c_details['case_id'], esc_tier, esc_reason, selected_user_name)
+                        if esc_res.get("success"):
+                            st.success(f"Case escalated to {esc_res['new_ats']} ({esc_res['assigned_queue']})!")
+                            time.sleep(0.5)
+                            st.rerun()
+
+            st.markdown("---")
+            st.markdown("#### 🤖 Automated Case Resolution Proposals (AI Copilot)")
+            if st.button("Generate AI Resolution Proposal", type="primary"):
+                with st.spinner("AI Copilot analyzing case telemetry, category, and historical KB articles..."):
+                    proposal_res = AICopilotService.propose_resolution(c_details['case_id'])
+                    if proposal_res.get('success'):
+                        prop = proposal_res['proposal']
+                        st.markdown(f"""
+                        <div class="fluent-card" style="border-left: 5px solid #0078d4; background-color: #ffffff;">
+                            <h4 style="margin-top:0; color: #0078d4;">💡 AI Resolution Plan ({prop['copilot_summary']})</h4>
+                            <p><strong>Estimated Fix Time:</strong> {prop['estimated_resolution_mins']} minutes | <strong>Recommended Part:</strong> <code>{prop['recommended_part']}</code></p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.markdown("##### 📝 Recommended Step-by-Step Diagnostic Actions:")
+                        for idx, step in enumerate(prop['diagnostic_steps'], 1):
+                            st.markdown(f"{idx}. {step}")
+                            
+                        st.markdown("##### 📚 Relevant Knowledge Base Articles:")
+                        for kb in prop['kb_articles']:
+                            st.markdown(f"- 🔗 `{kb}`")
 
         # Render sub-tab content for non-summary details
         with tab_dynamic_notes:
@@ -1183,6 +1238,27 @@ elif nav_selection == "CTI Customer Search (D365 CC)":
                 st.session_state['cti_active_customer'] = None
                 st.rerun()
 
+        st.markdown("---")
+        st.subheader("🎙️ Live Call & AI Sentiment")
+        sample_transcript = st.text_area(
+            "Live Call Transcript Stream",
+            value="Customer: My HP EliteBook screen is flickering violently after yesterday's update. I am extremely frustrated and this is completely unacceptable!\nAgent: I understand your frustration. Let's run HP UEFI Diagnostics on serial 5CG12345AB to check display panel hardware.",
+            height=130,
+            key="cti_live_transcript"
+        )
+        
+        sent_info = AICopilotService.analyze_sentiment(sample_transcript)
+        s_color = "🔴" if sent_info['churn_risk'] == 'High' else ("🟡" if sent_info['churn_risk'] == 'Medium' else "🟢")
+        st.markdown(f"{s_color} **Customer Sentiment:** `{sent_info['sentiment']}` (Score: `{sent_info['score']}/100`)")
+        st.caption(f"Risk: **{sent_info['churn_risk']}** | Key Triggers: {', '.join(sent_info['triggers'])}")
+        
+        if st.button("🤖 Copilot Summarize & Auto-Log", use_container_width=True):
+            sum_res = AICopilotService.summarize_transcript(sample_transcript)
+            if sum_res.get("success"):
+                sm = sum_res['summary']
+                st.success("Transcript Summarized & Auto-Logged!")
+                st.json(sm)
+
     with col_search:
         # Title bar for Customer Information card
         st.markdown("""
@@ -1386,6 +1462,141 @@ elif nav_selection == "Administration Panel":
         st.dataframe(df_audit, use_container_width=True)
 
 # --------------------------------------------------------------------------------
+# SCREEN: POWER APPS PARTS HUB
+# --------------------------------------------------------------------------------
+elif nav_selection == "Power Apps Parts Hub":
+    st.title("📱 Power Apps Canvas - Parts Replacement & Inventory Hub")
+    st.markdown("Custom embedded Power Apps Canvas interface for searching regional spare parts stock, validating serial compatibility, placing hardware orders, and tracking dispatches.")
+
+    with st.container(border=True):
+        st.markdown("""
+        <div style="background-color: #742774; padding: 10px 15px; border-radius: 4px; color: white; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <strong style="font-size: 16px;">📱 HP Parts Dispatch Canvas App (v2.4)</strong>
+            <span style="font-size: 12px; background: rgba(255,255,255,0.2); padding: 3px 8px; border-radius: 3px;">Power Apps Component Framework (PCF)</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_src, col_cat = st.columns([2, 1])
+        with col_src:
+            part_query = st.text_input("🔍 Search Parts Catalog (Part #, Name, Compatible Products)", value="")
+        with col_cat:
+            part_cat = st.selectbox("Filter Category", ["All", "Motherboard", "Display", "Battery", "Storage", "Keyboard", "Cooling", "Networking", "Power", "Webcam", "Audio", "Input", "Accessory"])
+
+        parts_list = PartsService.search_parts(part_query, part_cat)
+
+        st.subheader("📦 Available Spare Parts Catalog")
+        df_parts = pd.DataFrame(parts_list)
+        if not df_parts.empty:
+            df_display = df_parts[['part_number', 'name', 'category', 'compatible_products', 'stock_na', 'stock_emea', 'stock_apac', 'price_usd']]
+            df_display.columns = ['Part Number', 'Part Name', 'Category', 'Compatible Models', 'Stock (NA)', 'Stock (EMEA)', 'Stock (APAC)', 'Price (USD)']
+            st.dataframe(df_display, use_container_width=True)
+
+        st.markdown("---")
+        st.subheader("🛒 Dispatch Replacement Spare Part to Case")
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT case_id, case_number, serial_number FROM cases ORDER BY case_id DESC LIMIT 30")
+        case_rows = cursor.fetchall()
+        conn.close()
+        case_options = [f"CAS-{r['case_id']} | Case {r['case_number']} (Serial: {r['serial_number']})" for r in case_rows]
+
+        with st.form("parts_order_form"):
+            c_target = st.selectbox("Select Target Support Case", case_options)
+            p_target = st.selectbox("Select Spare Part", [f"{p['part_id']} - {p['part_number']} | {p['name']} (${p['price_usd']})" for p in parts_list])
+            
+            c_qty, c_ship, c_reg = st.columns(3)
+            with c_qty:
+                order_qty = st.number_input("Quantity", min_value=1, max_value=5, value=1)
+            with c_ship:
+                order_ship = st.selectbox("Shipping Priority", ["Standard", "Express", "Overnight", "Field Technician Dispatch"])
+            with c_reg:
+                order_reg = st.selectbox("Warehouse Region", ["North America", "EMEA", "APAC"])
+
+            btn_order = st.form_submit_button("🚀 Submit Parts Replacement Dispatch", use_container_width=True, type="primary")
+
+            if btn_order:
+                case_id_val = int(c_target.split(" | ")[0].replace("CAS-", ""))
+                part_id_val = int(p_target.split(" - ")[0])
+                
+                order_res = PartsService.place_order(case_id_val, part_id_val, order_qty, order_ship, order_reg, selected_user_name)
+                if order_res.get("success"):
+                    st.success(f"Order #{order_res['order_id']} placed successfully! Tracking Number: `{order_res['tracking_number']}`")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error(order_res.get("error"))
+
+# --------------------------------------------------------------------------------
+# SCREEN: FASTAPI REST PORTAL
+# --------------------------------------------------------------------------------
+elif nav_selection == "FastAPI REST Portal":
+    st.title("🌐 FastAPI REST API Integration Workbench")
+    st.markdown("Test REST API endpoints connecting external Power Automate flows, Azure Logic Apps, or webhooks directly to the Dataverse mock store.")
+
+    st.markdown("""
+    <div class="fluent-card" style="border-left: 5px solid #107c41;">
+        <h4 style="margin-top:0; color: #107c41;">⚡ API Server Status: ONLINE (FastAPI v0.141.1)</h4>
+        <p>Base OpenAPI Swagger Endpoint: <code>http://localhost:8000/docs</code> | REST API Namespace: <code>/api/v1/</code></p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    tab_test_cases, tab_test_ai, tab_test_parts, tab_test_webhook = st.tabs([
+        "GET /api/v1/cases", "POST /api/v1/ai-propose-resolution", "GET /api/v1/parts/catalog", "POST /api/v1/webhooks"
+    ])
+
+    with tab_test_cases:
+        st.subheader("Query Cases via REST API")
+        st.code("GET /api/v1/cases?status=Active&limit=10", language="http")
+        if st.button("Execute GET /api/v1/cases"):
+            from app.api.main import list_cases
+            res = list_cases(status="Active", limit=5)
+            st.json(res)
+
+    with tab_test_ai:
+        st.subheader("Trigger AI Resolution Proposal via REST API")
+        st.code("POST /api/v1/cases/1/ai-propose-resolution", language="http")
+        if st.button("Execute AI Proposal Endpoint"):
+            from app.api.main import ai_propose_resolution
+            res = ai_propose_resolution(1)
+            st.json(res)
+
+    with tab_test_parts:
+        st.subheader("Query Spare Parts Catalog via REST API")
+        st.code("GET /api/v1/parts/catalog?category=Motherboard", language="http")
+        if st.button("Execute GET /api/v1/parts/catalog"):
+            from app.api.main import search_parts_catalog
+            res = search_parts_catalog(category="Motherboard")
+            st.json(res)
+
+    with tab_test_webhook:
+        st.subheader("Simulate Inbound Power Automate Webhook")
+        st.code("""
+POST /api/v1/webhooks/power-automate/case-update
+Content-Type: application/json
+
+{
+  "case_number": "CAS-100001",
+  "updated_field": "WarrantyStatus",
+  "old_value": "Out of Warranty",
+  "new_value": "Care Pack Active",
+  "source_system": "Power Automate Cloud Flow"
+}
+        """, language="json")
+        if st.button("Simulate Webhook Trigger"):
+            from app.api.main import power_automate_webhook, WebhookCaseUpdateRequest
+            wh_req = WebhookCaseUpdateRequest(
+                case_number="CAS-100001",
+                updated_field="WarrantyStatus",
+                old_value="Out of Warranty",
+                new_value="Care Pack Active",
+                source_system="Power Automate Cloud Flow"
+            )
+            res = power_automate_webhook(wh_req)
+            st.success("Webhook Received & Executed!")
+            st.json(res)
+
+# --------------------------------------------------------------------------------
 # SCREEN 10: INTEGRATION READINESS
 # --------------------------------------------------------------------------------
 elif nav_selection == "Integration Readiness":
@@ -1501,10 +1712,35 @@ elif nav_selection == "Power BI Data Model":
     )
     """, language="sql")
 
+    st.markdown("---")
+    st.subheader("📈 Live Power BI Interactive Analytics Dashboard")
+
+    b1, b2 = st.columns(2)
+    with b1:
+        st.markdown("##### 🎯 SLA Breach Risk Distribution")
+        conn = get_connection()
+        df_sla_cases = pd.read_sql_query("SELECT case_id, priority, status, created_date, crt, l2_pending, awaiting_customer FROM cases WHERE status NOT IN ('Resolved', 'Closed')", conn)
+        conn.close()
+
+        risk_counts = {"Low Risk": 0, "Medium Risk": 0, "High Risk": 0, "Critical Risk": 0}
+        for _, r in df_sla_cases.iterrows():
+            res = SLAPredictorService.predict_risk(r['case_id'])
+            if res.get("success"):
+                risk_counts[res['risk_level']] = risk_counts.get(res['risk_level'], 0) + 1
+
+        df_risk_chart = pd.DataFrame(list(risk_counts.items()), columns=['Risk Level', 'Case Count'])
+        st.bar_chart(df_risk_chart.set_index('Risk Level'))
+
+    with b2:
+        st.markdown("##### 📦 Regional Spare Parts Warehouse Inventory")
+        parts_summary = PartsService.get_parts_summary()
+        df_ps = pd.DataFrame(parts_summary)
+        if not df_ps.empty:
+            df_ps.columns = ['Category', 'North America', 'EMEA', 'APAC', 'Part Types']
+            st.bar_chart(df_ps.set_index('Category')[['North America', 'EMEA', 'APAC']])
+
 # Handle navigation changes pushed by session state
 if 'navigate_to' in st.session_state:
     target = st.session_state['navigate_to']
     del st.session_state['navigate_to']
-    # Update navigation widget choice and reload (handled by streamlit query parameters or simple state check next load)
-    # Streamlit query params can be used, but simple session rerun does the trick:
     st.info(f"Navigating to {target}. Please select it in the sidebar.")

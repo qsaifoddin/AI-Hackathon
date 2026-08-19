@@ -210,6 +210,38 @@ def init_db():
     );
     """)
 
+    # 12. PartsCatalog Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS parts_catalog (
+        part_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        part_number TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        compatible_products TEXT NOT NULL,
+        stock_na INTEGER DEFAULT 0,
+        stock_emea INTEGER DEFAULT 0,
+        stock_apac INTEGER DEFAULT 0,
+        price_usd REAL NOT NULL
+    );
+    """)
+
+    # 13. PartsOrders Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS parts_orders (
+        order_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        case_id INTEGER NOT NULL,
+        part_id INTEGER NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        shipping_priority TEXT NOT NULL CHECK(shipping_priority IN ('Standard', 'Express', 'Overnight', 'Field Technician Dispatch')),
+        warehouse_region TEXT NOT NULL CHECK(warehouse_region IN ('North America', 'EMEA', 'APAC')),
+        status TEXT NOT NULL CHECK(status IN ('Requested', 'Approved', 'Shipped', 'Delivered', 'Cancelled')),
+        tracking_number TEXT,
+        order_date TEXT NOT NULL,
+        FOREIGN KEY (case_id) REFERENCES cases(case_id),
+        FOREIGN KEY (part_id) REFERENCES parts_catalog(part_id)
+    );
+    """)
+
     conn.commit()
     seed_data(conn)
     conn.close()
@@ -604,6 +636,46 @@ def seed_data(conn):
             log_time, 'System Service', 'Customer Follow-up', c['case_id'],
             'Follow-up scheduled', 'None', 'Scheduled 1st Followup', 'Success'
         ))
+
+    # Seed Parts Catalog
+    cursor.execute("SELECT COUNT(*) FROM parts_catalog")
+    if cursor.fetchone()[0] == 0:
+        parts_data = [
+            ('HP-PRT-MB-840', 'System Board i7-1370P 16GB', 'Motherboard', 'HP EliteBook 840 G10, HP ZBook Firefly', 45, 28, 15, 450.00),
+            ('HP-PRT-DISP-4K', '14.0 OLED 4K Touch Display Assembly', 'Display', 'HP Spectre x360, HP EliteBook 840', 60, 40, 25, 280.00),
+            ('HP-PRT-BAT-6cell', 'Long Life 6-Cell 68Wh Polymer Battery', 'Battery', 'HP EliteBook 840, HP ProBook 450', 120, 95, 70, 95.00),
+            ('HP-PRT-SSD-1TB', 'PCIe NVMe Gen4 1TB M.2 SSD', 'Storage', 'Universal HP Commercial', 200, 150, 110, 120.00),
+            ('HP-PRT-KBD-US', 'Backlit Spill-Resistant Keyboard US', 'Keyboard', 'HP EliteBook 840 G9/G10', 85, 60, 45, 65.00),
+            ('HP-PRT-FAN-DUAL', 'Dual High-Efficiency Thermal Fan Assembly', 'Cooling', 'HP ZBook Studio G10', 90, 75, 50, 42.00),
+            ('HP-PRT-WIFI-6E', 'Intel Wi-Fi 6E AX211 Bluetooth 5.3 Module', 'Networking', 'Universal HP Laptops', 300, 210, 180, 35.00),
+            ('HP-PRT-PWR-100W', '100W USB-C Smart AC Adapter', 'Power', 'HP EliteBook, HP ZBook', 250, 190, 140, 55.00),
+            ('HP-PRT-CAM-5MP', '5MP IR Camera with Dual Microphones', 'Webcam', 'HP EliteBook 840 G10', 110, 80, 60, 48.00),
+            ('HP-PRT-SPK-BANG', 'Bang & Olufsen Quad Speaker System', 'Audio', 'HP Spectre x360', 70, 50, 35, 40.00),
+            ('HP-PRT-TP-GLS', 'Precision Glass Touchpad Module', 'Input', 'HP EliteBook 840', 130, 90, 65, 38.00),
+            ('HP-PRT-DOCK-G5', 'HP Thunderbolt Dock G5 120W', 'Accessory', 'Universal USB-C/Thunderbolt', 95, 70, 55, 180.00)
+        ]
+        cursor.executemany("""
+            INSERT INTO parts_catalog (part_number, name, category, compatible_products, stock_na, stock_emea, stock_apac, price_usd)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, parts_data)
+
+    # Seed Parts Orders
+    cursor.execute("SELECT COUNT(*) FROM parts_orders")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("SELECT part_id FROM parts_catalog")
+        part_ids = [r[0] for r in cursor.fetchall()]
+        for i in range(15):
+            c = random.choice(cases_created)
+            pid = random.choice(part_ids)
+            priority = random.choice(['Standard', 'Express', 'Overnight', 'Field Technician Dispatch'])
+            region = random.choice(['North America', 'EMEA', 'APAC'])
+            status = random.choice(['Requested', 'Approved', 'Shipped', 'Delivered'])
+            tracking = f"1Z99999999{random.randint(100000, 999999)}"
+            order_dt = (c['created_date'] + timedelta(hours=random.randint(2, 24))).strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute("""
+                INSERT INTO parts_orders (case_id, part_id, quantity, shipping_priority, warehouse_region, status, tracking_number, order_date)
+                VALUES (?, ?, 1, ?, ?, ?, ?, ?)
+            """, (c['case_id'], pid, priority, region, status, tracking, order_dt))
 
     conn.commit()
 
