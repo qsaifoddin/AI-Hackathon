@@ -4,6 +4,17 @@ import sys
 # Ensure root directory is on python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+# Streamlit Cloud deployment safeguard:
+# If Streamlit Cloud is configured with main module = app/api/main.py, render the Streamlit UI
+try:
+    import streamlit as st
+    if st.runtime.exists():
+        from app.db.database import init_db
+        init_db()
+        from app.ui.main import *
+except Exception:
+    pass
+
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
