@@ -4,16 +4,12 @@ import sys
 # Ensure root directory is on python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-# Streamlit Cloud deployment safeguard:
-# If Streamlit Cloud is configured with main module = app/api/main.py, render the Streamlit UI
-try:
-    import streamlit as st
-    if st.runtime.exists():
-        from app.db.database import init_db
-        init_db()
-        from app.ui.main import *
-except Exception:
-    pass
+# Auto-initialize database schema on startup
+from app.db.database import init_db, get_connection
+init_db()
+
+# Render Streamlit UI presentation layer
+import app.ui.main
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
