@@ -14,7 +14,7 @@ import time
 from datetime import datetime, timedelta
 
 # Import services
-from app.db.database import get_connection, DB_PATH
+from app.db.database import get_connection, DB_PATH, init_db
 from app.services.audit import log_action, get_config, set_config, get_all_configs
 from app.services.entitlement import EntitlementService
 from app.services.notification import NotificationService
@@ -124,6 +124,9 @@ def fetch_customers():
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+# Ensure database schema & sample data exist on deployment startup
+init_db()
 
 # Global state / caches
 engineers = fetch_engineers()
