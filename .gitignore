@@ -1,0 +1,21 @@
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# SQLite temporary files
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Local IDE files
+.vscode/
+.idea/
+*.log
