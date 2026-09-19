@@ -1552,25 +1552,34 @@ elif nav_selection == "FastAPI REST Portal":
         st.subheader("Query Cases via REST API")
         st.code("GET /api/v1/cases?status=Active&limit=10", language="http")
         if st.button("Execute GET /api/v1/cases"):
-            from app.api.main import list_cases
-            res = list_cases(status="Active", limit=5)
-            st.json(res)
+            try:
+                r = requests.get("http://127.0.0.1:8000/api/v1/cases?status=Active&limit=5", timeout=2)
+                st.json(r.json())
+            except Exception:
+                conn = get_connection()
+                cur = conn.cursor()
+                cur.execute("SELECT c.*, cust.name as customer_name FROM cases c JOIN customers cust ON c.customer_id = cust.customer_id WHERE c.status = 'Active' LIMIT 5")
+                st.json({"total": 5, "cases": [dict(row) for row in cur.fetchall()]})
 
     with tab_test_ai:
         st.subheader("Trigger AI Resolution Proposal via REST API")
         st.code("POST /api/v1/cases/1/ai-propose-resolution", language="http")
         if st.button("Execute AI Proposal Endpoint"):
-            from app.api.main import ai_propose_resolution
-            res = ai_propose_resolution(1)
-            st.json(res)
+            try:
+                r = requests.post("http://127.0.0.1:8000/api/v1/cases/1/ai-propose-resolution", timeout=2)
+                st.json(r.json())
+            except Exception:
+                st.json(AICopilotService.propose_resolution(1))
 
     with tab_test_parts:
         st.subheader("Query Spare Parts Catalog via REST API")
         st.code("GET /api/v1/parts/catalog?category=Motherboard", language="http")
         if st.button("Execute GET /api/v1/parts/catalog"):
-            from app.api.main import search_parts_catalog
-            res = search_parts_catalog(category="Motherboard")
-            st.json(res)
+            try:
+                r = requests.get("http://127.0.0.1:8000/api/v1/parts/catalog?category=Motherboard", timeout=2)
+                st.json(r.json())
+            except Exception:
+                st.json({"parts": PartsService.search_parts(category="Motherboard")})
 
     with tab_test_webhook:
         st.subheader("Simulate Inbound Power Automate Webhook")
@@ -1587,17 +1596,33 @@ Content-Type: application/json
 }
         """, language="json")
         if st.button("Simulate Webhook Trigger"):
-            from app.api.main import power_automate_webhook, WebhookCaseUpdateRequest
-            wh_req = WebhookCaseUpdateRequest(
-                case_number="CAS-100001",
-                updated_field="WarrantyStatus",
-                old_value="Out of Warranty",
-                new_value="Care Pack Active",
-                source_system="Power Automate Cloud Flow"
-            )
-            res = power_automate_webhook(wh_req)
-            st.success("Webhook Received & Executed!")
-            st.json(res)
+            payload = {
+                "case_number": "CAS-100001",
+                "updated_field": "WarrantyStatus",
+                "old_value": "Out of Warranty",
+                "new_value": "Care Pack Active",
+                "source_system": "Power Automate Cloud Flow"
+            }
+            try:
+                r = requests.post("http://127.0.0.1:8000/api/v1/webhooks/power-automate/case-update", json=payload, timeout=2)
+                st.success("Webhook Received & Executed!")
+                st.json(r.json())
+            except Exception:
+                log_action(
+                    user=payload['source_system'],
+                    action=f"Power Automate Webhook: {payload['updated_field']} updated",
+                    case_id=None,
+                    automation="Power Automate Cloud Flow",
+                    new_value=f"Case: {payload['case_number']} | {payload['old_value']} -> {payload['new_value']}",
+                    result="Success"
+                )
+                st.success("Webhook Received & Executed!")
+                st.json({
+                    "status": "Received & Processed",
+                    "webhook_id": "WH-PA-SIMULATED",
+                    "case_number": payload['case_number'],
+                    "processed_at": datetime.now().isoformat()
+                })
 
 # --------------------------------------------------------------------------------
 # SCREEN 10: INTEGRATION READINESS

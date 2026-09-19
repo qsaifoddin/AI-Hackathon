@@ -8,9 +8,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from app.db.database import init_db, get_connection
 init_db()
 
-# Render Streamlit UI presentation layer
-import app.ui.main
-
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List
