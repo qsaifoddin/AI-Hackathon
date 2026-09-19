@@ -38,8 +38,8 @@ st.set_page_config(
 st.markdown("""
 <style>
     /* Main body background and text */
-    .stApp {
-        background-color: #f3f2f1;
+    [data-testid="stAppViewContainer"], [data-testid="stMain"], .stApp {
+        background-color: #f3f2f1 !important;
         color: #323130 !important;
         font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
     }
